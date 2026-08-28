@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./live.css";
+import "./news.css";
 
 export const metadata: Metadata = {
   title: "HomeField",
