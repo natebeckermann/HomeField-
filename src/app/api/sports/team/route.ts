@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BASE = "https://www.thesportsdb.com/api/v1/json/123";
+const BADGE_OVERRIDES: Record<string, string> = {
+  "st. louis city sc": "https://league-mp7static.mlsdigital.net/images/stl-city-sc-0.png",
+  "st louis city sc": "https://league-mp7static.mlsdigital.net/images/stl-city-sc-0.png",
+};
 
 async function getJson(url: string) {
   const res = await fetch(url, { next: { revalidate: 900 } });
@@ -26,6 +30,9 @@ export async function GET(request: NextRequest) {
       getJson(`${BASE}/lookup_all_players.php?id=${encodeURIComponent(team.idTeam)}`).catch(() => ({ player: [] })),
     ]);
 
+    const requestedName = name.toLowerCase();
+    const badge = BADGE_OVERRIDES[requestedName] || team.strBadge;
+
     return NextResponse.json({
       team: {
         id: team.idTeam,
@@ -34,7 +41,7 @@ export async function GET(request: NextRequest) {
         sport: team.strSport,
         stadium: team.strStadium,
         location: team.strLocation,
-        badge: team.strBadge,
+        badge,
         banner: team.strBanner,
         website: team.strWebsite,
       },
