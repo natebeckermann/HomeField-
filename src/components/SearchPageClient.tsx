@@ -7,7 +7,7 @@ import { teamCatalog, demoGames, demoStories, defaultLeaguePrefs } from "@/data/
 const demoPlayers = [
   {id:"p1",name:"Demo Player A",teamId:"stl-cardinals",position:"OF"},
   {id:"p2",name:"Demo Player B",teamId:"stl-blues",position:"C"},
-  {id:"p3",name:"Demo Player C",teamId:"indiana-hoosiers",position:"QB"},
+  {id:"p3",name:"Demo Player C",teamId:"indiana-football",position:"QB"},
   {id:"p4",name:"Demo Player D",teamId:"man-utd",position:"MF"},
   {id:"p5",name:"Demo Player E",teamId:"stl-city",position:"FW"}
 ];
@@ -25,7 +25,7 @@ export default function SearchPageClient(){
   const total=teamResults.length+leagueResults.length+playerResults.length+storyResults.length+gameResults.length;
   return <main className="searchPageShell">
     <div className="searchTopbar"><Link href="/" className="backLink"><ArrowLeft size={17}/>HomeField</Link><span>Universal Search</span></div>
-    <section className="searchHero"><span className="eyebrow">SEARCH HOMEFIELD</span><h1>Everything you follow, one search.</h1><p>Search teams, leagues, players, games and stories without leaving HomeField.</p><div className="searchInputLarge"><Search size={21}/><input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search Cardinals, Premier League, player, story…"/></div></section>
+    <section className="searchHero"><span className="eyebrow">SEARCH HOMEFIELD</span><h1>Everything you follow, one search.</h1><p>Search teams, leagues, players, games and stories without leaving HomeField.</p><div className="searchInputLarge"><Search size={21}/><input aria-label="Search HomeField" autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search Cardinals, Premier League, player, story…"/></div></section>
     {!query && <section className="searchEmpty"><Search size={28}/><h2>Start typing</h2><p>Try a team, league, sport, player, opponent or headline.</p></section>}
     {query && total===0 && <section className="searchEmpty"><Search size={28}/><h2>No results</h2><p>Nothing matched “{q}”.</p></section>}
     {teamResults.length>0 && <ResultSection title="Teams" icon={<Trophy size={18}/>}><div className="searchGrid">{teamResults.map(t=><Link href={`/team/${t.id}`} className="searchCard" key={t.id}><div className="miniMark" style={{background:`linear-gradient(145deg,${t.primary},${t.secondary})`}}>{t.short}</div><div><strong>{t.name}</strong><small>{t.league} · {t.sport}</small></div></Link>)}</div></ResultSection>}
