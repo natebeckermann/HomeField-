@@ -11,15 +11,7 @@ const ESPN_FEEDS = [
   ["NBA", "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news?limit=12"],
 ] as const;
 
-const BR_FEEDS = [
-  ["MLB", "https://bleacherreport.com/mlb"],
-  ["NHL", "https://bleacherreport.com/nhl"],
-  ["College Football", "https://bleacherreport.com/college-football"],
-  ["College Basketball", "https://bleacherreport.com/college-basketball"],
-  ["Soccer", "https://bleacherreport.com/world-football"],
-  ["NFL", "https://bleacherreport.com/nfl"],
-  ["NBA", "https://bleacherreport.com/nba"],
-] as const;
+const BR_RSS = "https://feeds.bleacherreport.com/articles";
 
 const TEAM_TERMS: Record<string, string[]> = {
   "stl-cardinals": ["st. louis cardinals", "st louis cardinals", "cardinals"],
@@ -55,24 +47,35 @@ async function getJson(url: string) {
 async function getText(url: string) {
   const res = await fetch(url, {
     next: { revalidate: 300 },
-    headers: { "user-agent": "HomeField/1.0" },
+    headers: {
+      "user-agent": "Mozilla/5.0 HomeField/1.0",
+      accept: "application/rss+xml, application/xml, text/xml, text/plain, */*",
+    },
   });
-  if (!res.ok) throw new Error(`News page failed: ${res.status}`);
+  if (!res.ok) throw new Error(`News feed failed: ${res.status}`);
   return res.text();
 }
 
 function normalizeText(value: unknown) {
   return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&amp;/g, "&")
-    .replace(/&#39;/g, "'")
+    .replace(/&#39;|&apos;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function stripTags(value: string) {
   return normalizeText(value.replace(/<[^>]+>/g, " "));
+}
+
+function xmlValue(block: string, tag: string) {
+  const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return match ? normalizeText(match[1]) : "";
 }
 
 function isPaid(article: any) {
@@ -126,40 +129,66 @@ function matchingTeams(article: any, favoriteIds: string[]) {
   return matchingTeamsText(text, favoriteIds);
 }
 
-function extractBleacherStories(html: string, league: string, favoriteIds: string[]): Story[] {
+function inferLeague(text: string) {
+  const t = text.toLowerCase();
+  if (/mlb|baseball|cardinals|yankees|dodgers|cubs|mets|phillies|braves|astros/.test(t)) return "MLB";
+  if (/nhl|hockey|blues|oilers|maple leafs|rangers|bruins|avalanche/.test(t)) return "NHL";
+  if (/college football|cfb|ncaa football|hoosiers football|big ten football/.test(t)) return "College Football";
+  if (/college basketball|ncaa basketball|march madness|billikens|hoosiers basketball/.test(t)) return "College Basketball";
+  if (/mls|st\. louis city|st louis city|inter miami|lafc|fc dallas/.test(t)) return "MLS";
+  if (/premier league|manchester united|man united|arsenal|liverpool|chelsea|man city|tottenham/.test(t)) return "Premier League";
+  if (/nfl|football|chiefs|cowboys|eagles|bills|ravens|browns|packers|steelers/.test(t)) return "NFL";
+  if (/nba|basketball|lakers|celtics|knicks|warriors|bucks|nuggets|thunder/.test(t)) return "NBA";
+  return "Sports";
+}
+
+function extractRssImage(block: string) {
+  const media = block.match(/<media:content[^>]+url=["']([^"']+)["']/i)?.[1]
+    || block.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)?.[1]
+    || block.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image\//i)?.[1];
+  if (media) return normalizeText(media);
+  const desc = xmlValue(block, "description");
+  return desc.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] || null;
+}
+
+function extractBleacherRss(xml: string, favoriteIds: string[]): Story[] {
+  const items = xml.match(/<item\b[\s\S]*?<\/item>/gi) || [];
   const stories: Story[] = [];
   const seen = new Set<string>();
-  const anchorRegex = /<a\b[^>]*href=["']([^"']*\/articles\/\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let match: RegExpExecArray | null;
-  let rank = 0;
 
-  while ((match = anchorRegex.exec(html)) && stories.length < 18) {
-    const rawHref = match[1];
-    const headline = stripTags(match[2]);
-    if (!headline || headline.length < 18 || headline.length > 180) continue;
-    if (/subscribe|newsletter|sign up/i.test(headline)) continue;
+  items.forEach((item, feedRank) => {
+    const headline = stripTags(xmlValue(item, "title"));
+    const url = normalizeText(xmlValue(item, "link"));
+    if (!headline || !url || !url.includes("bleacherreport.com")) return;
+    if (/subscribe|newsletter|sign up/i.test(headline)) return;
     const key = slugHeadline(headline);
-    if (!key || seen.has(key)) continue;
+    if (!key || seen.has(key)) return;
     seen.add(key);
 
-    const url = rawHref.startsWith("http") ? rawHref : `https://bleacherreport.com${rawHref.startsWith("/") ? "" : "/"}${rawHref}`;
-    const teams = matchingTeamsText(headline, favoriteIds);
+    const description = stripTags(xmlValue(item, "description"));
+    const categories = Array.from(item.matchAll(/<category(?:\s[^>]*)?>([\s\S]*?)<\/category>/gi))
+      .map((m) => stripTags(m[1]))
+      .join(" ");
+    const text = `${headline} ${description} ${categories} ${url}`;
+    const teams = matchingTeamsText(text, favoriteIds);
+
     stories.push({
-      id: `br-${league}-${key.slice(0, 70)}`,
+      id: `br-${key.slice(0, 80)}`,
       headline,
-      summary: "",
+      summary: description,
       source: "Bleacher Report",
-      league,
+      league: inferLeague(text),
       url,
-      image: null,
-      published: null,
+      image: extractRssImage(item),
+      published: xmlValue(item, "pubDate") || xmlValue(item, "dc:date") || null,
       favoriteTeamIds: teams,
       personalized: teams.length > 0,
       sourceRank: 2,
-      feedRank: rank++,
+      feedRank,
     });
-  }
-  return stories;
+  });
+
+  return stories.slice(0, 40);
 }
 
 async function espnStories(favoriteIds: string[]) {
@@ -196,17 +225,12 @@ async function espnStories(favoriteIds: string[]) {
 }
 
 async function bleacherStories(favoriteIds: string[]) {
-  const results = await Promise.all(
-    BR_FEEDS.map(async ([league, url]) => {
-      try {
-        const html = await getText(url);
-        return extractBleacherStories(html, league, favoriteIds);
-      } catch {
-        return [];
-      }
-    }),
-  );
-  return results.flat();
+  try {
+    const xml = await getText(BR_RSS);
+    return extractBleacherRss(xml, favoriteIds);
+  } catch {
+    return [];
+  }
 }
 
 function dedupeStories(input: Story[]) {
