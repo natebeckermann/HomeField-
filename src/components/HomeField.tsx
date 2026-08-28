@@ -16,7 +16,13 @@ const KNOWN_BADGES:Record<string,string>={
  "man-utd":"https://a.espncdn.com/i/teamlogos/soccer/500/360.png"
 };
 type LiveCard={teamId:string;title:string;detail:string;status?:string;eventId?:string;isLiveData:boolean;badge?:string;source?:string};
-function formatEventDetail(event:any){const date=event?.date?new Date(`${event.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"Date TBD";const time=event?.time?event.time.slice(0,5):"Time TBD";return [date,time,event?.venue].filter(Boolean).join(" · ")}
+function formatEventDetail(event:any){
+ const dt=event?.dateTime?new Date(event.dateTime):null;
+ const valid=dt&&!Number.isNaN(dt.getTime());
+ const date=valid?dt.toLocaleDateString(undefined,{month:"short",day:"numeric"}):"Date TBD";
+ const time=valid?dt.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):"Time TBD";
+ return [date,time,event?.venue].filter(Boolean).join(" · ")
+}
 
 export default function HomeField(){
  const [favoriteIds,setFavoriteIds]=useState(defaultFavoriteTeamIds);const [settings,setSettings]=useState(false);const [liveCards,setLiveCards]=useState<LiveCard[]>([]);const [gamesLoading,setGamesLoading]=useState(true);
