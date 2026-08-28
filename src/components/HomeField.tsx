@@ -5,64 +5,23 @@ import {Search,Settings2,ChevronRight,CalendarDays,Newspaper,Trophy,Home as Home
 import {defaultFavoriteTeamIds,defaultLeaguePrefs,defaultNewsSources,events,stories,teamCatalog} from "@/data/demo";
 
 const KEY="homefield-preferences-v1";
-const API_NAMES:Record<string,string>={
- "stl-cardinals":"St. Louis Cardinals",
- "stl-blues":"St. Louis Blues",
- "indiana-football":"Indiana Hoosiers",
- "indiana-basketball":"Indiana Hoosiers",
- "slu-basketball":"Saint Louis Billikens",
- "stl-city":"St. Louis City SC",
- "man-utd":"Manchester United"
-};
-
-type LiveCard={teamId:string;title:string;detail:string;status?:string;eventId?:string;isLiveData:boolean};
-
-function formatEventDetail(event:any){
- const date=event?.date?new Date(`${event.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"Date TBD";
- const time=event?.time?event.time.slice(0,5):"Time TBD";
- return [date,time,event?.venue].filter(Boolean).join(" · ");
-}
+const API_NAMES:Record<string,string>={"stl-cardinals":"St. Louis Cardinals","stl-blues":"St. Louis Blues","indiana-football":"Indiana Hoosiers","indiana-basketball":"Indiana Hoosiers","slu-basketball":"Saint Louis Billikens","stl-city":"St. Louis City SC","man-utd":"Manchester United"};
+type LiveCard={teamId:string;title:string;detail:string;status?:string;eventId?:string;isLiveData:boolean;badge?:string;source?:string};
+function formatEventDetail(event:any){const date=event?.date?new Date(`${event.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"Date TBD";const time=event?.time?event.time.slice(0,5):"Time TBD";return [date,time,event?.venue].filter(Boolean).join(" · ")}
 
 export default function HomeField(){
- const [favoriteIds,setFavoriteIds]=useState(defaultFavoriteTeamIds);
- const [settings,setSettings]=useState(false);
- const [liveCards,setLiveCards]=useState<LiveCard[]>([]);
- const [gamesLoading,setGamesLoading]=useState(true);
-
+ const [favoriteIds,setFavoriteIds]=useState(defaultFavoriteTeamIds);const [settings,setSettings]=useState(false);const [liveCards,setLiveCards]=useState<LiveCard[]>([]);const [gamesLoading,setGamesLoading]=useState(true);
  useEffect(()=>{try{const r=localStorage.getItem(KEY);if(r)setFavoriteIds(JSON.parse(r).favoriteTeamIds||defaultFavoriteTeamIds)}catch{}},[]);
  const teams=useMemo(()=>favoriteIds.map(id=>teamCatalog.find(t=>t.id===id)).filter(Boolean) as typeof teamCatalog,[favoriteIds]);
-
- useEffect(()=>{
-  let cancelled=false;
-  async function load(){
-   setGamesLoading(true);
-   const results=await Promise.all(teams.map(async team=>{
-    try{
-     const name=API_NAMES[team.id]||team.name;
-     const res=await fetch(`/api/sports/team?name=${encodeURIComponent(name)}`);
-     if(!res.ok)throw new Error("sports feed unavailable");
-     const data=await res.json();
-     if(data?.nextEvent){
-      return {teamId:team.id,title:data.nextEvent.name||team.name,detail:formatEventDetail(data.nextEvent),status:data.nextEvent.status||"NEXT",eventId:data.nextEvent.id,isLiveData:true} satisfies LiveCard;
-     }
-    }catch{}
-    const fallback=events.find(e=>e.teamId===team.id);
-    return fallback?{teamId:team.id,title:fallback.title,detail:fallback.detail,status:fallback.status,isLiveData:false} satisfies LiveCard:null;
-   }));
-   if(!cancelled){setLiveCards(results.filter(Boolean) as LiveCard[]);setGamesLoading(false)}
-  }
-  if(teams.length)load();else{setLiveCards([]);setGamesLoading(false)}
-  return()=>{cancelled=true};
- },[teams]);
-
+ useEffect(()=>{let cancelled=false;async function load(){setGamesLoading(true);const results=await Promise.all(teams.map(async team=>{try{const res=await fetch(`/api/sports/team?name=${encodeURIComponent(API_NAMES[team.id]||team.name)}`);if(!res.ok)throw new Error("sports feed unavailable");const data=await res.json();if(data?.nextEvent)return {teamId:team.id,title:data.nextEvent.name||team.name,detail:formatEventDetail(data.nextEvent),status:data.nextEvent.status||"NEXT",eventId:data.nextEvent.id,isLiveData:true,badge:data.team?.badge,source:data.source} satisfies LiveCard;if(data?.team)return {teamId:team.id,title:team.name,detail:"Schedule unavailable",status:"TEAM",isLiveData:true,badge:data.team?.badge,source:data.source} satisfies LiveCard}catch{}const fallback=events.find(e=>e.teamId===team.id);return fallback?{teamId:team.id,title:fallback.title,detail:fallback.detail,status:fallback.status,isLiveData:false} satisfies LiveCard:null}));if(!cancelled){setLiveCards(results.filter(Boolean) as LiveCard[]);setGamesLoading(false)}}if(teams.length)load();else{setLiveCards([]);setGamesLoading(false)}return()=>{cancelled=true}},[teams]);
+ const badgeByTeam=useMemo(()=>Object.fromEntries(liveCards.filter(x=>x.badge).map(x=>[x.teamId,x.badge])),[liveCards]);
  const toggle=(id:string)=>{const next=favoriteIds.includes(id)?favoriteIds.filter(x=>x!==id):[...favoriteIds,id];setFavoriteIds(next);try{const existing=JSON.parse(localStorage.getItem(KEY)||"{}");localStorage.setItem(KEY,JSON.stringify({...existing,favoriteTeamIds:next,leagues:existing.leagues||defaultLeaguePrefs,sources:existing.sources||defaultNewsSources}))}catch{localStorage.setItem(KEY,JSON.stringify({favoriteTeamIds:next,leagues:defaultLeaguePrefs,sources:defaultNewsSources}))}};
-
  return <main className="homeShell"><header className="homeHeader"><div><div className="brand">HOMEFIELD</div><small>YOUR TEAMS. FIRST.</small></div><div className="headerActions"><Link href="/search" className="iconBtn" aria-label="Search HomeField"><Search size={19}/></Link><button className="iconBtn" aria-label="Personalize HomeField" onClick={()=>setSettings(!settings)}><Settings2 size={19}/></button></div></header>
  {settings&&<section className="settingsPanel"><div className="sectionHead"><div><span className="eyebrow">PERSONALIZE</span><h2>Favorite teams</h2></div></div><div className="settingsTeams">{teamCatalog.map(t=><button key={t.id} className={favoriteIds.includes(t.id)?"settingsTeam active":"settingsTeam"} onClick={()=>toggle(t.id)}>{t.short} · {t.name}</button>)}</div><p>News priority: ESPN first, Bleacher Report second. Paid-only articles such as ESPN+ are excluded.</p></section>}
  <section className="heroWelcome"><span className="eyebrow">GOOD EVENING</span><h1>Your sports world,<br/>built around you.</h1><p>Favorite teams first. Followed leagues next. Big stories everywhere else.</p></section>
- <section className="homeSection"><div className="sectionHead"><div><span className="eyebrow">MY TEAMS</span><h2>HomeField</h2></div></div><div className="teamRail">{teams.map(t=><Link href={`/team/${t.id}`} className="teamTile" key={t.id}><div className="teamLogo" style={{background:`linear-gradient(145deg,${t.primary},${t.secondary})`}}>{t.short}</div><strong>{t.name}</strong><small>{t.league}</small></Link>)}</div></section>
- <section className="homeSection"><div className="sectionHead"><div><span className="eyebrow">LIVE & NEXT UP</span><h2>Your games</h2></div><Link href="/scores" className="backLink">All scores <ChevronRight size={15}/></Link></div>{gamesLoading?<div className="empty">Loading current schedules…</div>:<div className="gameGrid">{liveCards.map((g,i)=><Link href={g.isLiveData?`/team/${g.teamId}`:`/game/game-${Math.max(1,events.findIndex(e=>e.teamId===g.teamId)+1)}`} className="gameCard" key={`${g.teamId}-${g.eventId||i}`}>{g.isLiveData?<Radio/>:<CalendarDays/>}<div><strong>{g.title}</strong><small>{g.detail}</small>{g.isLiveData&&<small>Live data · TheSportsDB</small>}</div><ChevronRight/></Link>)}</div>}</section>
+ <section className="homeSection"><div className="sectionHead"><div><span className="eyebrow">MY TEAMS</span><h2>HomeField</h2></div></div><div className="teamRail">{teams.map(t=><Link href={`/team/${t.id}`} className="teamTile brandedTeamTile" style={{background:`radial-gradient(circle at 90% 0%,${t.primary}30,transparent 45%),#12171e`}} key={t.id}>{badgeByTeam[t.id]?<img src={badgeByTeam[t.id]} alt="" className="teamLogoImage"/>:<div className="teamLogo" style={{background:`linear-gradient(145deg,${t.primary},${t.secondary})`}}>{t.short}</div>}<strong>{t.name}</strong><small>{t.league}</small></Link>)}</div></section>
+ <section className="homeSection"><div className="sectionHead"><div><span className="eyebrow">LIVE & NEXT UP</span><h2>Your games</h2></div><Link href="/scores" className="backLink">All scores <ChevronRight size={15}/></Link></div>{gamesLoading?<div className="empty">Loading current schedules…</div>:<div className="gameGrid">{liveCards.map((g,i)=><Link href={g.isLiveData?`/team/${g.teamId}`:`/game/game-${Math.max(1,events.findIndex(e=>e.teamId===g.teamId)+1)}`} className="gameCard homeGameCard" key={`${g.teamId}-${g.eventId||i}`}>{g.badge?<img src={g.badge} alt="" className="gameBadge"/>:g.isLiveData?<Radio/>:<CalendarDays/>}<div><span className="gameStatus">{g.status||"NEXT"}</span><strong>{g.title}</strong><small>{g.detail}</small>{g.isLiveData&&<small>{g.source||"Live sports feed"}</small>}</div><ChevronRight/></Link>)}</div>}</section>
  <section className="homeSection"><div className="sectionHead"><div><span className="eyebrow">TOP STORIES FOR YOU</span><h2>Free to read</h2></div></div><div className="storyGrid">{stories.map(s=><article className="storyCard" key={s.id}><div className="storyMeta"><span>{s.source}</span><span>{s.tag}</span></div><h3>{s.headline}</h3><p>{s.summary}</p></article>)}</div></section>
  <section className="homeSection"><div className="sectionHead"><div><span className="eyebrow">YOUR LEAGUES</span><h2>Everything you follow</h2></div></div><div className="leagueGrid">{defaultLeaguePrefs.filter(l=>l.coverage!=="off").map(l=><Link className="leagueCard" href={`/league/${l.id}`} key={l.id}><Trophy/><div><strong>{l.name}</strong><small>{l.coverage==="full"?"Full coverage":"Major stories"}</small></div><ChevronRight/></Link>)}</div></section>
- <nav className="bottomNav" aria-label="Primary navigation"><Link href="/"><HomeIcon/><span>Home</span></Link><Link href="/scores"><Trophy/><span>Scores</span></Link><Link href="/search"><Search/><span>Search</span></Link><Link href="/news"><Newspaper/><span>News</span></Link></nav>
- </main>}
+ <nav className="bottomNav" aria-label="Primary navigation"><Link href="/"><HomeIcon/><span>Home</span></Link><Link href="/scores"><Trophy/><span>Scores</span></Link><Link href="/search"><Search/><span>Search</span></Link><Link href="/news"><Newspaper/><span>News</span></Link></nav></main>;
+}
