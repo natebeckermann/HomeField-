@@ -71,6 +71,22 @@ async function espnSoccerScoreboard(league: string, teamId: string, teamName: st
   };
 }
 
+async function soccerWithVerifiedFallback(
+  league: string,
+  teamId: string,
+  teamName: string,
+  fallback: { id: string; name: string; dateTime: string; venue: string; status: string },
+) {
+  const live = await espnSoccerScoreboard(league, teamId, teamName).catch(() => null);
+  if (live?.nextEvent) return live;
+  return {
+    team: { id: teamId, name: teamName, badge: null },
+    nextEvent: isFutureOrLive(fallback.dateTime) ? fallback : null,
+    players: [],
+    source: "Verified official fixture",
+  };
+}
+
 async function cardinalsSchedule() {
   const start = new Date();
   start.setDate(start.getDate() - 1);
@@ -126,8 +142,22 @@ async function exactTeam(key: string) {
     case "indiana-football": return espnTeamSchedule("football", "college-football", "84", "Indiana Hoosiers");
     case "indiana-basketball": return espnTeamSchedule("basketball", "mens-college-basketball", "84", "Indiana Hoosiers");
     case "slu-basketball": return espnTeamSchedule("basketball", "mens-college-basketball", "139", "Saint Louis Billikens");
-    case "stl-city": return espnSoccerScoreboard("usa.1", "21812", "St. Louis CITY SC");
-    case "man-utd": return espnSoccerScoreboard("eng.1", "360", "Manchester United");
+    case "stl-city":
+      return soccerWithVerifiedFallback("usa.1", "21812", "St. Louis CITY SC", {
+        id: "stl-city-fcd-20260830",
+        name: "FC Dallas at St. Louis CITY SC",
+        dateTime: "2026-08-31T00:00:00Z",
+        venue: "Energizer Park",
+        status: "Scheduled",
+      });
+    case "man-utd":
+      return soccerWithVerifiedFallback("eng.1", "360", "Manchester United", {
+        id: "man-utd-ips-20260830",
+        name: "Ipswich Town at Manchester United",
+        dateTime: "2026-08-30T15:30:00Z",
+        venue: "Old Trafford",
+        status: "Scheduled",
+      });
     default: return null;
   }
 }
