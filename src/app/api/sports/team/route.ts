@@ -24,25 +24,18 @@ function eventFromEspn(event: any) {
   };
 }
 
-async function espnScheduleForSeason(sport: string, league: string, teamId: string, season: number) {
-  return getJson(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/teams/${teamId}/schedule?season=${season}`);
-}
-
 async function espnTeamSchedule(sport: string, league: string, teamId: string, teamName: string) {
   const year = new Date().getFullYear();
   const seasons = [year, year + 1];
   let allEvents: any[] = [];
 
   for (const season of seasons) {
-    const data = await espnScheduleForSeason(sport, league, teamId, season).catch(() => null);
+    const data = await getJson(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/teams/${teamId}/schedule?season=${season}`).catch(() => null);
     if (data?.events?.length) allEvents = allEvents.concat(data.events);
   }
 
   const upcoming = allEvents
-    .filter((e: any) => {
-      const completed = Boolean(e?.status?.type?.completed);
-      return isFutureOrLive(e?.date, completed);
-    })
+    .filter((e: any) => isFutureOrLive(e?.date, Boolean(e?.status?.type?.completed)))
     .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
 
   return {
@@ -50,6 +43,31 @@ async function espnTeamSchedule(sport: string, league: string, teamId: string, t
     nextEvent: upcoming ? eventFromEspn(upcoming) : null,
     players: [],
     source: "ESPN",
+  };
+}
+
+function compactDate(d: Date) {
+  return d.toISOString().slice(0, 10).replaceAll("-", "");
+}
+
+async function espnSoccerScoreboard(league: string, teamId: string, teamName: string) {
+  const start = new Date();
+  start.setDate(start.getDate() - 1);
+  const end = new Date();
+  end.setDate(end.getDate() + 60);
+  const data = await getJson(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard?dates=${compactDate(start)}-${compactDate(end)}&limit=1000`);
+  const events = (data?.events || []).filter((event: any) => {
+    const competition = event?.competitions?.[0];
+    const hasTeam = (competition?.competitors || []).some((c: any) => String(c?.team?.id) === teamId);
+    return hasTeam && isFutureOrLive(event?.date, Boolean(event?.status?.type?.completed));
+  });
+  const upcoming = events.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+
+  return {
+    team: { id: teamId, name: teamName, badge: null },
+    nextEvent: upcoming ? eventFromEspn(upcoming) : null,
+    players: [],
+    source: "ESPN Scoreboard",
   };
 }
 
@@ -108,8 +126,8 @@ async function exactTeam(key: string) {
     case "indiana-football": return espnTeamSchedule("football", "college-football", "84", "Indiana Hoosiers");
     case "indiana-basketball": return espnTeamSchedule("basketball", "mens-college-basketball", "84", "Indiana Hoosiers");
     case "slu-basketball": return espnTeamSchedule("basketball", "mens-college-basketball", "139", "Saint Louis Billikens");
-    case "stl-city": return espnTeamSchedule("soccer", "usa.1", "21812", "St. Louis CITY SC");
-    case "man-utd": return espnTeamSchedule("soccer", "eng.1", "360", "Manchester United");
+    case "stl-city": return espnSoccerScoreboard("usa.1", "21812", "St. Louis CITY SC");
+    case "man-utd": return espnSoccerScoreboard("eng.1", "360", "Manchester United");
     default: return null;
   }
 }
