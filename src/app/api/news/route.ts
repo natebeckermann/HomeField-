@@ -24,18 +24,9 @@ const TEAM_TERMS: Record<string, string[]> = {
 };
 
 type Story = {
-  id: string;
-  headline: string;
-  summary: string;
-  source: "ESPN" | "Bleacher Report";
-  league: string;
-  url: string;
-  image: string | null;
-  published: string | null;
-  favoriteTeamIds: string[];
-  personalized: boolean;
-  sourceRank: number;
-  feedRank: number;
+  id: string; headline: string; summary: string; source: "ESPN" | "Bleacher Report"; league: string;
+  url: string; image: string | null; published: string | null; favoriteTeamIds: string[]; personalized: boolean;
+  sourceRank: number; feedRank: number;
 };
 
 async function getJson(url: string) {
@@ -47,88 +38,45 @@ async function getJson(url: string) {
 async function getText(url: string) {
   const res = await fetch(url, {
     next: { revalidate: 300 },
-    headers: {
-      "user-agent": "Mozilla/5.0 HomeField/1.0",
-      accept: "application/rss+xml, application/xml, text/xml, text/plain, */*",
-    },
+    headers: { "user-agent": "Mozilla/5.0 HomeField/1.0", accept: "application/rss+xml, application/xml, text/xml, text/plain, */*" },
   });
   if (!res.ok) throw new Error(`News feed failed: ${res.status}`);
   return res.text();
 }
 
 function normalizeText(value: unknown) {
-  return String(value || "")
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&amp;/g, "&")
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"').replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
 }
-
-function stripTags(value: string) {
-  return normalizeText(value.replace(/<[^>]+>/g, " "));
-}
-
+function stripTags(value: string) { return normalizeText(value.replace(/<[^>]+>/g, " ")); }
 function xmlValue(block: string, tag: string) {
   const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i"));
   return match ? normalizeText(match[1]) : "";
 }
-
 function isPaid(article: any) {
   const text = `${article?.headline || ""} ${article?.description || ""} ${article?.type || ""}`.toLowerCase();
   const href = String(article?.links?.web?.href || "").toLowerCase();
-  return Boolean(
-    article?.premium === true ||
-      article?.paywall === true ||
-      article?.type === "Premium" ||
-      text.includes("espn+") ||
-      text.includes("subscriber only") ||
-      text.includes("insider") ||
-      href.includes("espnplus") ||
-      href.includes("/insider/")
-  );
+  return Boolean(article?.premium === true || article?.paywall === true || article?.type === "Premium" || text.includes("espn+") ||
+    text.includes("subscriber only") || text.includes("insider") || href.includes("espnplus") || href.includes("/insider/"));
 }
-
-function slugHeadline(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
-}
-
+function slugHeadline(value: string) { return value.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim(); }
 function headlineWords(value: string) {
   const stop = new Set(["the", "a", "an", "and", "or", "to", "of", "for", "in", "on", "at", "with", "from", "after", "before", "is", "are", "as", "vs"]);
   return new Set(slugHeadline(value).split(" ").filter((w) => w.length > 2 && !stop.has(w)));
 }
-
 function similarHeadline(a: string, b: string) {
-  const aw = headlineWords(a);
-  const bw = headlineWords(b);
-  if (!aw.size || !bw.size) return false;
-  let intersection = 0;
-  aw.forEach((word) => { if (bw.has(word)) intersection += 1; });
-  const union = new Set([...aw, ...bw]).size;
-  const jaccard = union ? intersection / union : 0;
-  const containment = intersection / Math.min(aw.size, bw.size);
+  const aw = headlineWords(a), bw = headlineWords(b); if (!aw.size || !bw.size) return false;
+  let intersection = 0; aw.forEach((word) => { if (bw.has(word)) intersection += 1; });
+  const union = new Set([...aw, ...bw]).size; const jaccard = union ? intersection / union : 0; const containment = intersection / Math.min(aw.size, bw.size);
   return jaccard >= 0.56 || containment >= 0.72;
 }
-
-function articleImage(article: any) {
-  const images = article?.images || [];
-  return images.find((img: any) => img?.url)?.url || null;
-}
-
+function articleImage(article: any) { return (article?.images || []).find((img: any) => img?.url)?.url || null; }
 function matchingTeamsText(text: string, favoriteIds: string[]) {
-  const haystack = text.toLowerCase();
-  return favoriteIds.filter((id) => (TEAM_TERMS[id] || []).some((term) => haystack.includes(term)));
+  const haystack = text.toLowerCase(); return favoriteIds.filter((id) => (TEAM_TERMS[id] || []).some((term) => haystack.includes(term)));
 }
-
 function matchingTeams(article: any, favoriteIds: string[]) {
-  const text = `${article?.headline || ""} ${article?.description || ""} ${(article?.categories || []).map((c: any) => c?.description || c?.name || "").join(" ")}`;
-  return matchingTeamsText(text, favoriteIds);
+  return matchingTeamsText(`${article?.headline || ""} ${article?.description || ""} ${(article?.categories || []).map((c: any) => c?.description || c?.name || "").join(" ")}`, favoriteIds);
 }
-
 function inferLeague(text: string) {
   const t = text.toLowerCase();
   if (/mlb|baseball|cardinals|yankees|dodgers|cubs|mets|phillies|braves|astros/.test(t)) return "MLB";
@@ -141,151 +89,69 @@ function inferLeague(text: string) {
   if (/nba|basketball|lakers|celtics|knicks|warriors|bucks|nuggets|thunder/.test(t)) return "NBA";
   return "Sports";
 }
-
 function extractRssImage(block: string) {
-  const media = block.match(/<media:content[^>]+url=["']([^"']+)["']/i)?.[1]
-    || block.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)?.[1]
-    || block.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image\//i)?.[1];
-  if (media) return normalizeText(media);
-  const desc = xmlValue(block, "description");
-  return desc.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] || null;
+  const media = block.match(/<media:content[^>]+url=["']([^"']+)["']/i)?.[1] || block.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)?.[1] || block.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image\//i)?.[1];
+  if (media) return normalizeText(media); const desc = xmlValue(block, "description"); return desc.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] || null;
 }
-
 function extractBleacherRss(xml: string, favoriteIds: string[]): Story[] {
-  const items = xml.match(/<item\b[\s\S]*?<\/item>/gi) || [];
-  const stories: Story[] = [];
-  const seen = new Set<string>();
-
+  const items = xml.match(/<item\b[\s\S]*?<\/item>/gi) || []; const stories: Story[] = []; const seen = new Set<string>();
   items.forEach((item, feedRank) => {
-    const headline = stripTags(xmlValue(item, "title"));
-    const url = normalizeText(xmlValue(item, "link"));
-    if (!headline || !url || !url.includes("bleacherreport.com")) return;
-    if (/subscribe|newsletter|sign up/i.test(headline)) return;
-    const key = slugHeadline(headline);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-
+    const headline = stripTags(xmlValue(item, "title")); const url = normalizeText(xmlValue(item, "link"));
+    if (!headline || !url || !url.includes("bleacherreport.com") || /subscribe|newsletter|sign up/i.test(headline)) return;
+    const key = slugHeadline(headline); if (!key || seen.has(key)) return; seen.add(key);
     const description = stripTags(xmlValue(item, "description"));
-    const categories = Array.from(item.matchAll(/<category(?:\s[^>]*)?>([\s\S]*?)<\/category>/gi))
-      .map((m) => stripTags(m[1]))
-      .join(" ");
-    const text = `${headline} ${description} ${categories} ${url}`;
-    const teams = matchingTeamsText(text, favoriteIds);
-
-    stories.push({
-      id: `br-${key.slice(0, 80)}`,
-      headline,
-      summary: description,
-      source: "Bleacher Report",
-      league: inferLeague(text),
-      url,
-      image: extractRssImage(item),
-      published: xmlValue(item, "pubDate") || xmlValue(item, "dc:date") || null,
-      favoriteTeamIds: teams,
-      personalized: teams.length > 0,
-      sourceRank: 2,
-      feedRank,
-    });
+    const categories = Array.from(item.matchAll(/<category(?:\s[^>]*)?>([\s\S]*?)<\/category>/gi)).map((m) => stripTags(m[1])).join(" ");
+    const text = `${headline} ${description} ${categories} ${url}`; const teams = matchingTeamsText(text, favoriteIds);
+    stories.push({ id: `br-${key.slice(0, 80)}`, headline, summary: description, source: "Bleacher Report", league: inferLeague(text), url,
+      image: extractRssImage(item), published: xmlValue(item, "pubDate") || xmlValue(item, "dc:date") || null, favoriteTeamIds: teams,
+      personalized: teams.length > 0, sourceRank: 2, feedRank });
   });
-
   return stories.slice(0, 40);
 }
-
 async function espnStories(favoriteIds: string[]) {
-  const results = await Promise.all(
-    ESPN_FEEDS.map(async ([league, url]) => {
-      try {
-        const data = await getJson(url);
-        return (data?.articles || []).map((article: any, feedRank: number) => ({ article, league, feedRank }));
-      } catch {
-        return [];
-      }
-    }),
-  );
-
-  return results.flat()
-    .filter(({ article }) => article?.headline && article?.links?.web?.href && !isPaid(article))
-    .map(({ article, league, feedRank }): Story => {
-      const teams = matchingTeams(article, favoriteIds);
-      return {
-        id: String(article?.id || article?.dataSourceIdentifier || `${league}-${slugHeadline(article.headline)}`),
-        headline: normalizeText(article.headline),
-        summary: normalizeText(article.description || article.story || ""),
-        source: "ESPN",
-        league,
-        url: article.links.web.href,
-        image: articleImage(article),
-        published: article?.published || article?.lastModified || null,
-        favoriteTeamIds: teams,
-        personalized: teams.length > 0,
-        sourceRank: 1,
-        feedRank,
-      };
-    });
-}
-
-async function bleacherStories(favoriteIds: string[]) {
-  try {
-    const xml = await getText(BR_RSS);
-    return extractBleacherRss(xml, favoriteIds);
-  } catch {
-    return [];
-  }
-}
-
-function dedupeStories(input: Story[]) {
-  const selected: Story[] = [];
-  const ordered = [...input].sort((a, b) => {
-    if (a.personalized !== b.personalized) return a.personalized ? -1 : 1;
-    const aTime = a.published ? new Date(a.published).getTime() : 0;
-    const bTime = b.published ? new Date(b.published).getTime() : 0;
-    if (aTime !== bTime) return bTime - aTime;
-    if (a.sourceRank !== b.sourceRank) return a.sourceRank - b.sourceRank;
-    return a.feedRank - b.feedRank;
+  const results = await Promise.all(ESPN_FEEDS.map(async ([league, url]) => {
+    try { const data = await getJson(url); return (data?.articles || []).map((article: any, feedRank: number) => ({ article, league, feedRank })); }
+    catch { return []; }
+  }));
+  return results.flat().filter(({ article }) => article?.headline && article?.links?.web?.href && !isPaid(article)).map(({ article, league, feedRank }): Story => {
+    const teams = matchingTeams(article, favoriteIds); return { id: String(article?.id || article?.dataSourceIdentifier || `${league}-${slugHeadline(article.headline)}`),
+      headline: normalizeText(article.headline), summary: normalizeText(article.description || article.story || ""), source: "ESPN", league,
+      url: article.links.web.href, image: articleImage(article), published: article?.published || article?.lastModified || null,
+      favoriteTeamIds: teams, personalized: teams.length > 0, sourceRank: 1, feedRank };
   });
-
+}
+async function bleacherStories(favoriteIds: string[]) { try { return extractBleacherRss(await getText(BR_RSS), favoriteIds); } catch { return []; } }
+function dedupeStories(input: Story[]) {
+  const selected: Story[] = []; const ordered = [...input].sort((a, b) => {
+    if (a.personalized !== b.personalized) return a.personalized ? -1 : 1;
+    const aTime = a.published ? new Date(a.published).getTime() : 0, bTime = b.published ? new Date(b.published).getTime() : 0;
+    if (aTime !== bTime) return bTime - aTime; if (a.sourceRank !== b.sourceRank) return a.sourceRank - b.sourceRank; return a.feedRank - b.feedRank;
+  });
   for (const story of ordered) {
     const duplicateIndex = selected.findIndex((existing) => similarHeadline(existing.headline, story.headline));
-    if (duplicateIndex === -1) {
-      selected.push(story);
-      continue;
-    }
-    const existing = selected[duplicateIndex];
-    if (story.sourceRank < existing.sourceRank) selected[duplicateIndex] = story;
+    if (duplicateIndex === -1) selected.push(story); else if (story.sourceRank < selected[duplicateIndex].sourceRank) selected[duplicateIndex] = story;
   }
   return selected;
 }
+function rankStories(input: Story[]) {
+  return [...input].sort((a, b) => {
+    if (a.personalized !== b.personalized) return a.personalized ? -1 : 1;
+    const aTime = a.published ? new Date(a.published).getTime() : 0, bTime = b.published ? new Date(b.published).getTime() : 0;
+    if (aTime !== bTime) return bTime - aTime; if (a.sourceRank !== b.sourceRank) return a.sourceRank - b.sourceRank; return a.feedRank - b.feedRank;
+  });
+}
+function ensureSourceDiversity(ranked: Story[]) {
+  const firstSix = ranked.slice(0, 6); if (firstSix.some((s) => s.source === "Bleacher Report")) return ranked;
+  const brIndex = ranked.findIndex((s, i) => i >= 6 && s.source === "Bleacher Report"); if (brIndex === -1) return ranked;
+  const br = ranked[brIndex]; return [...ranked.slice(0, 5), br, ...ranked.slice(5, brIndex), ...ranked.slice(brIndex + 1)];
+}
 
 export async function GET(request: NextRequest) {
-  const favoriteIds = (request.nextUrl.searchParams.get("teams") || "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  const [espn, bleacher] = await Promise.all([
-    espnStories(favoriteIds),
-    bleacherStories(favoriteIds),
-  ]);
-
-  const stories = dedupeStories([...espn, ...bleacher])
-    .sort((a, b) => {
-      if (a.personalized !== b.personalized) return a.personalized ? -1 : 1;
-      const aTime = a.published ? new Date(a.published).getTime() : 0;
-      const bTime = b.published ? new Date(b.published).getTime() : 0;
-      if (aTime !== bTime) return bTime - aTime;
-      if (a.sourceRank !== b.sourceRank) return a.sourceRank - b.sourceRank;
-      return a.feedRank - b.feedRank;
-    })
-    .slice(0, 40)
-    .map(({ sourceRank, feedRank, ...story }) => story);
-
-  return NextResponse.json({
-    stories,
-    source: "ESPN + Bleacher Report",
-    sources: [
-      { name: "ESPN", count: espn.length, priority: 1 },
-      { name: "Bleacher Report", count: bleacher.length, priority: 2 },
-    ],
-    generatedAt: new Date().toISOString(),
-  });
+  const favoriteIds = (request.nextUrl.searchParams.get("teams") || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const [espn, bleacher] = await Promise.all([espnStories(favoriteIds), bleacherStories(favoriteIds)]);
+  const ranked = ensureSourceDiversity(rankStories(dedupeStories([...espn, ...bleacher])));
+  const stories = ranked.slice(0, 40).map(({ sourceRank, feedRank, ...story }) => story);
+  return NextResponse.json({ stories, source: "ESPN + Bleacher Report", sources: [
+    { name: "ESPN", count: espn.length, priority: 1 }, { name: "Bleacher Report", count: bleacher.length, priority: 2 }
+  ], generatedAt: new Date().toISOString() });
 }
